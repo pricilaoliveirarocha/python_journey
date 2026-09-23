@@ -3,12 +3,37 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import DateTime, Enum as SqlEnum, String, Text, select
+from fastapi import Depends, FastAPI, HTTPException, Path, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import DateTime, String, Text, select
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from FastAPI.database import Base, SessionLocal, engine, get_db
+from database import Base, SessionLocal, engine, get_db
+
+API_DESCRIPTION = """
+API didática para consultar tarefas armazenadas em um banco PostgreSQL.
+
+## Recursos
+
+* Consulte uma tarefa pelo seu identificador.
+* Receba respostas JSON validadas pelo Pydantic.
+* Explore e teste as rotas diretamente nesta documentação.
+"""
+
+DOCS_URL = "/docs"
+REDOC_URL = "/redoc"
+
+OPENAPI_TAGS = [
+    {
+        "name": "Geral",
+        "description": "Informações gerais e links úteis da aplicação.",
+    },
+    {
+        "name": "Tasks",
+        "description": "Operações de consulta das tarefas cadastradas.",
+    },
+]
 
 
 class TaskStatus(str, Enum):
@@ -64,41 +89,85 @@ def initialize_database() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Prepara as tabelas e os dados iniciais durante a inicialização."""
+
     initialize_database()
     yield
 
 
 app = FastAPI(
     title="Tasks API",
-    description="API de exemplo para consultar tarefas.",
+    description=API_DESCRIPTION,
     version="1.0.0",
+    openapi_tags=OPENAPI_TAGS,
+    docs_url=DOCS_URL,
+    redoc_url=REDOC_URL,
     lifespan=lifespan,
 )
 
 
 class Task(BaseModel):
-    """Estrutura retornada ao consultar os detalhes de uma tarefa."""
+    """Representa os detalhes públicos de uma tarefa."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "title": "Estudar FastAPI",
+                "description": "Aprender rotas e modelos de resposta.",
+                "status": "in_progress",
+                "created_at": "2026-09-22T21:09:10-03:00",
+                "due_date": "2026-09-30T20:59:00-03:00",
+            }
+        },
+    )
 
-    id: int
-    title: str
-    description: str
-    status: TaskStatus
-    created_at: datetime
-    due_date: datetime | None = None
+    id: int = Field(description="Identificador único da tarefa.")
+    title: str = Field(description="Título curto da tarefa.")
+    description: str = Field(description="Descrição detalhada da tarefa.")
+    status: TaskStatus = Field(description="Estado atual da tarefa.")
+    created_at: datetime = Field(description="Data e hora de criação.")
+    due_date: datetime | None = Field(
+        default=None,
+        description="Prazo da tarefa, quando definido.",
+    )
 
 
-@app.get("/", tags=["Geral"], summary="Apresenta a API")
-async def read_root():
-    """Retorna informações básicas e os principais links da API."""
+class RootResponse(BaseModel):
+    """Informações básicas para começar a explorar a API."""
 
-    return {
-        "message": "Bem-vindo à Tasks API!",
-        "version": app.version,
-        "documentation": "/docs",
-        "endpoints": {"task_details": "/tasks/{task_id}"},
-    }
+    message: str
+    version: str
+    documentation: str
+    alternative_documentation: str
+    endpoints: dict[str, str]
+
+
+class ErrorResponse(BaseModel):
+    """Formato padrão das respostas de erro."""
+
+    detail: str = Field(examples=["Tarefa com ID 999 não encontrada."])
+
+
+@app.get(
+    "/",
+    response_model=RootResponse,
+    tags=["Geral"],
+    summary="Apresenta a API",
+    description="Retorna a versão da aplicação e links para explorar suas rotas.",
+    response_description="Informações e links da API.",
+)
+async def read_root() -> RootResponse:
+    """Apresenta os pontos de entrada da aplicação."""
+
+    return RootResponse(
+        message="Bem-vindo à Tasks API!",
+        version=app.version,
+        documentation=DOCS_URL,
+        alternative_documentation=REDOC_URL,
+        endpoints={"task_details": "/tasks/{task_id}"},
+    )
 
 
 @app.get(
@@ -106,11 +175,31 @@ async def read_root():
     response_model=Task,
     tags=["Tasks"],
     summary="Consulta os detalhes de uma tarefa",
+    description=(
+        "Busca uma tarefa pelo identificador informado. "
+        "Os dados são consultados diretamente no PostgreSQL."
+    ),
+    response_description="Detalhes da tarefa encontrada.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponse,
+            "description": "Não existe uma tarefa com o ID informado.",
+        }
+    },
 )
 async def get_task(
-    task_id: int, db: Annotated[Session, Depends(get_db)]
+    task_id: Annotated[
+        int,
+        Path(
+            title="ID da tarefa",
+            description="Identificador numérico da tarefa no banco de dados.",
+            ge=1,
+            examples=[1],
+        ),
+    ],
+    db: Annotated[Session, Depends(get_db)],
 ) -> TaskRecord:
-    """Busca uma tarefa no PostgreSQL pelo ID."""
+    """Retorna uma tarefa existente ou gera o erro HTTP 404."""
 
     task = db.get(TaskRecord, task_id)
     if task is None:
@@ -122,4 +211,4 @@ async def get_task(
     return task
 
 
-# Execute na raiz do projeto: uvicorn FastAPI.basics:app --reload
+# Execute nesta pasta: uvicorn basics:app --reload

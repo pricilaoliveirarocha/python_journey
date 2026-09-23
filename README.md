@@ -25,24 +25,6 @@ Este repositório acompanha minha jornada de estudos em **Python e Inteligência
 5. **IA generativa:** LLMs, engenharia de prompts, embeddings e aplicações com APIs.
 6. **Projetos:** soluções completas para aplicar e consolidar os conhecimentos.
 
-### 📂 Estrutura planejada
-
-```text
-python_journey/
-├── python/
-│   ├── fundamentos/
-│   ├── exercicios/
-│   └── projetos/
-├── dados/
-│   ├── analise_de_dados/
-│   └── visualizacao/
-├── inteligencia_artificial/
-│   ├── machine_learning/
-│   ├── ia_generativa/
-│   └── projetos/
-└── README.md
-```
-
 > As pastas serão criadas conforme o avanço dos estudos, evitando estruturas vazias ou desnecessárias.
 
 ### ✨ Princípios
